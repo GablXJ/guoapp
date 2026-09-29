@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>登录 · 短剧 NAS</title>
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body class="center">
+<form id="login" class="card">
+  <h1>短剧 NAS</h1>
+  <p class="muted">请输入访问密码</p>
+  <input id="password" type="password" autocomplete="current-password" autofocus>
+  <button type="submit" class="primary">进入</button>
+  <p id="error" class="error"></p>
+</form>
+<script>
+document.getElementById('login').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const error = document.getElementById('error');
+  error.textContent = '正在验证…';
+  try {
+    const response = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'guoapp-nas' },
+      body: JSON.stringify({ password: document.getElementById('password').value })
+    });
+    const result = await response.json();
+    if (result.ok) { location.href = '/'; return; }
+    error.textContent = result.error || '登录失败';
+  } catch (e) {
+    error.textContent = '无法连接服务器';
+  }
+});
+</script>
+</body>
+</html>

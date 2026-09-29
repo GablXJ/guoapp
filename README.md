@@ -560,6 +560,7 @@ Android 使用可用的 Thermal API、供电与省电状态辅助决策；`getTh
 | Windows 10/11 x64 | 完整 ZIP 解压后运行 `hongguojian.exe`，全站源版为 `zhenguojian.exe`，保留所有 DLL 和 `data`；局域网原生发现依赖 Windows 10 1903+。0.2.16+22 已由 Actions 构建并检查包内文件，运行器的自检在播放器开始播放一步超时（无音频和图形设备），未做设备验收 |
 | Android TV | 与手机共用 APK，旧版电视界面与遥控有自动化记录；0.2.12 选集 / 设置及 0.2.13 同步 / 推送操作未验证，待电视实机验收 |
 | iOS 15.1+ | 已加入工程、Go 核心链接、媒体依赖、文件管理、系统代理桥接、Bonjour / 局域网权限和构建脚本；Actions 已产出未签名 IPA，需用自签工具安装，尚无已签名 IPA 和真机验收 |
+| NAS（Docker） | `nas/` 网页版：查询、下载、合并、导出，无在线播放；Actions 产出 amd64 / arm64 镜像压缩包，未在真实 NAS 上验收 |
 
 | 当前版本 | 安装包 | 大小 |
 | --- | --- | --- |
@@ -571,6 +572,33 @@ Android 使用可用的 Thermal API、供电与省电状态辅助决策；`getTh
 从 0.2.6 起，Android APK 默认压缩原生 `.so` 库，对红果版和全站源版同时生效。系统在安装时解压原生库后加载，缩小安装包下载体积；安装后仍需保留解压后的原生库空间。
 
 `INSTALL_FAILED_NO_MATCHING_ABIS` 表示 APK 与设备架构不匹配，请更换对应架构安装包。
+
+### NAS 版（Docker）
+
+`nas/` 是把应用核心（`native/` 的 Go 代码）直接包装成网页服务的版本，给放在 NAS 上长期开机的场景使用。它只做四件事：站源切换、查询、选集加入下载、下载完成后合并成整片并导出；不含在线播放、弹幕、追剧提醒和局域网推送。手机和电脑装了 App 后仍然可以独立使用，两者互不影响。
+
+镜像同样分两版：`hongguojian` 只含红果站源，`zhenguojian` 含全部站源。镜像里已带 `ffmpeg`，合并功能不需要额外安装任何东西。
+
+部署（以群晖 Container Manager / 通用 Docker 为例）：
+
+1. 下载 Releases 里的 `hongguojian-nas-linux-amd64.tar.gz`（ARM 架构的机器选 `-arm64-`），在 NAS 上执行 `docker load -i hongguojian-nas-linux-amd64.tar.gz`；或在仓库 Settings → Packages 开启公开后直接 `docker pull ghcr.io/<你的用户名>/guoapp-nas:hongguojian`。
+2. 在 NAS 上放一份 `nas/docker-compose.yml`，把 `image:` 换成上一步的镜像名，把 `nas/.env.example` 复制成同目录的 `.env` 并填写 `NAS_PASSWORD`（密码不要写进 compose 文件本身），然后 `docker compose up -d`。
+3. 浏览器打开 `http://NAS 内网地址:8090`，输入密码即可。
+
+| 环境变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `NAS_PASSWORD` | 必填 | 网页访问密码，不设置容器不会启动 |
+| `NAS_ADDR` | `:8090` | 监听地址，改成 `127.0.0.1:8090` 可只允许本机访问 |
+| `NAS_DATA` | `/data` | 缓存、封面、合并队列与成品索引所在目录，挂载到 `/data` |
+| `NAS_DOWNLOAD_DIR` | `/downloads` | 视频实际存放目录，挂载大容量卷；换目录会自动迁移旧文件 |
+| `NAS_FFMPEG` / `NAS_FFPROBE` | `ffmpeg` / `ffprobe` | 自带镜像无需修改；外部程序可用绝对路径覆盖 |
+| `TZ` | `Asia/Shanghai` | 日志与导出文件的时间 |
+
+安全边界：只有内网访问、必须输密码（连续错 6 次锁定）、写操作校验请求头、封面地址拒绝内网与保留地址、下载文件只允许读取下载目录内的路径。不要做端口映射、公网域名或内网穿透把这套页面暴露到互联网；确实需要远程访问时请叠加 VPN。红果站的取址依赖第三方解析中转 `djapi.999888456.xyz`（App 版同样如此），该服务可用性不受本项目控制，下载失败时先在“设置”里切换代理模式或稍后重试。
+
+NAS 版合并出的成品存放在视频目录（默认挂载的 `/downloads`）下的 `nas-merged`，导出给 Emby 的文件在同级的 `nas-exports`，合并过程的临时文件在 `nas-merge-work`，与手机/电脑 App 的媒体库相互独立，不会改写对方的记录文件。
+
+这一版尚未在真实 NAS 设备上跑过：本地已完成启动、登录、目录与搜索接口、下载任务增删查、鉴权与路径越界的自检；下载取址和合并在本机因站源中转与缺少 `ffmpeg` 未能验证，需在 Docker 镜像里实测后确认。
 
 ### GitHub Actions
 
@@ -585,6 +613,8 @@ Android 使用可用的 Thermal API、供电与省电状态辅助决策；`getTh
 | `hongguojian-ios-unsigned` | `zhenguojian-ios-unsigned` | 未签名 `.ipa` 和 SHA256，需用 AltStore / Sideloadly / TrollStore 等工具自签后安装 |
 
 Actions 分别传入默认参数与 `--all-sources` 构建两版，Flutter 和 Go 回归也覆盖两种编译配置。产物保留 14 天；`main` 分支的 Android 和 iOS 构建成功后，`release` 任务把两版安装包发布到 GitHub Release（标签 `app-v<版本号>`，例如 `app-v0.2.16-22`），Windows 包在通过时一并发布，Release 附件长期保留且无需登录即可下载，重复构建会覆盖同名附件。当前发布仓库为 <https://github.com/chenweitian423/guoapp>，下载页 <https://github.com/chenweitian423/guoapp/releases>。附件名以 `hongguojian-`（红果鉴）或 `zhenguojian-`（真果鉴）开头，Android 按架构以 `arm64-v8a`、`armeabi-v7a`、`x86_64` 结尾，`SHA256SUMS.txt` 为校验清单。
+
+推送 `nas/`、`native/` 或手动运行 **Build NAS image**，会先做 Go 格式、`go vet`、编译和一次真实启动自检（登录、读状态、取设置），再为两个版本各构建 `linux/amd64` 与 `linux/arm64` 镜像，导出成 `hongguojian-nas-linux-amd64.tar.gz` 这类压缩包作为 Artifact（保留 14 天）；推送 `v*` 标签时同时把这些压缩包附加到该版本的 Release，长期保留、免登录下载。手动勾选 “构建后推送到 GHCR” 才会推送 `ghcr.io/<用户名>/guoapp-nas:hongguojian|zhenguojian` 多架构镜像，私有仓库需在 Packages 里给拉取者授权。
 
 Android 正式发布持续使用同一签名并递增构建号，在仓库 Secrets 配置：
 

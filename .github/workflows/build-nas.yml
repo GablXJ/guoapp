@@ -1,0 +1,176 @@
+name: Build NAS image
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+    paths:
+      - 'nas/**'
+      - 'native/**'
+      - '.github/workflows/build-nas.yml'
+  pull_request:
+    paths:
+      - 'nas/**'
+      - 'native/**'
+      - '.github/workflows/build-nas.yml'
+  workflow_dispatch:
+    inputs:
+      push_image:
+        description: '构建后推送到 GHCR（ghcr.io）'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  GOPROXY: https://proxy.golang.org,direct
+  GOSUMDB: sum.golang.org
+
+concurrency:
+  group: nas-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: nas/go.mod
+          cache-dependency-path: |
+            nas/go.sum
+            native/go.sum
+      - run: test -z "$(gofmt -l .)"
+        working-directory: nas
+      - run: go vet ./...
+        working-directory: nas
+      - run: CGO_ENABLED=0 go build -trimpath -o /tmp/guoapp-nas .
+        working-directory: nas
+      - name: 启动自检
+        env:
+          NAS_ADDR: 127.0.0.1:18099
+          NAS_DATA: /tmp/nas-data
+          NAS_PASSWORD: ci-smoke-password
+        run: |
+          set -euo pipefail
+          /tmp/guoapp-nas &
+          pid=$!
+          trap 'kill $pid 2>/dev/null || true' EXIT
+          for _ in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:18099/login >/dev/null && break
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:18099/login >/dev/null
+          curl -fsS -c /tmp/nas.cookie -X POST \
+            -H 'Content-Type: application/json' -H 'X-Requested-With: guoapp-nas' \
+            -d '{"password":"ci-smoke-password"}' http://127.0.0.1:18099/api/login
+          curl -fsS -b /tmp/nas.cookie http://127.0.0.1:18099/api/state | grep -q hongguo
+          curl -fsS -b /tmp/nas.cookie http://127.0.0.1:18099/ | grep -q '短剧 NAS'
+          curl -fsS -b /tmp/nas.cookie -X POST \
+            -H 'Content-Type: application/json' -H 'X-Requested-With: guoapp-nas' \
+            -d '{"action":"resourceSettings"}' http://127.0.0.1:18099/api/rpc >/dev/null
+          echo 'NAS 服务启动自检通过'
+
+  tarball:
+    needs: checks
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        edition: [hongguojian, zhenguojian]
+        arch: [amd64, arm64]
+        include:
+          - edition: hongguojian
+            build_all_sources: 'false'
+          - edition: zhenguojian
+            build_all_sources: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: 构建镜像并导出压缩包
+        run: |
+          set -euo pipefail
+          archive='${{ matrix.edition }}-nas-linux-${{ matrix.arch }}.tar.gz'
+          docker buildx build \
+            --file nas/Dockerfile \
+            --platform "linux/${{ matrix.arch }}" \
+            --build-arg BUILD_ALL_SOURCES='${{ matrix.build_all_sources }}' \
+            --tag "guoapp-nas:${{ matrix.edition }}" \
+            --load .
+          docker save "guoapp-nas:${{ matrix.edition }}" | gzip > "$archive"
+          ls -lh "$archive"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.edition }}-nas-linux-${{ matrix.arch }}
+          path: '*-nas-linux-*.tar.gz'
+          retention-days: 14
+
+  release-image:
+    needs: tarball
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: '*-nas-linux-*'
+          merge-multiple: true
+      - name: 附加到 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag='${{ github.ref_name }}'
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --title "NAS 版 ${tag}" \
+              --notes 'NAS 用的 Docker 镜像压缩包：下载后 docker load -i 导入即可部署。'
+          fi
+          for archive in *-nas-linux-*.tar.gz; do
+            [ -f "$archive" ] || continue
+            gh release upload "$tag" "$archive" --clobber
+          done
+
+  registry:
+    needs: checks
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.push_image == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        edition: [hongguojian, zhenguojian]
+        include:
+          - edition: hongguojian
+            build_all_sources: 'false'
+          - edition: zhenguojian
+            build_all_sources: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: 构建并推送多架构镜像
+        run: |
+          set -euo pipefail
+          image=$(printf '%s/guoapp-nas' '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
+          docker buildx build \
+            --file nas/Dockerfile \
+            --platform linux/amd64,linux/arm64 \
+            --build-arg BUILD_ALL_SOURCES='${{ matrix.build_all_sources }}' \
+            --tag "${image}:${{ matrix.edition }}" \
+            --provenance=false \
+            --push .
+          echo "已推送 ${image}:${{ matrix.edition }}"

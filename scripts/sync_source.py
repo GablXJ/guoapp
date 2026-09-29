@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 SOURCE_DIRECTORIES = {
-    '.github', 'lib', 'native', 'android', 'windows', 'ios', 'macos', 'linux',
+    '.github', 'lib', 'native', 'nas', 'android', 'windows', 'ios', 'macos', 'linux',
     'web', 'assets', 'packages', 'scripts', 'test', 'test_driver', 'integration_test',
 }
 SOURCE_FILES = {
@@ -50,6 +50,7 @@ EXCLUDED_PATHS = {
 REQUIRED_FILES = {
     'AGENTS.md', 'README.md', 'pubspec.yaml', 'pubspec.lock', 'lib/main.dart',
     'native/go.mod', 'native/go.sum', 'native/bridge/main.go',
+    'nas/go.mod', 'nas/go.sum', 'nas/main.go', 'nas/Dockerfile',
     'android/app/build.gradle.kts', 'android/gradle/wrapper/gradle-wrapper.properties',
     'windows/CMakeLists.txt', 'windows/flutter/CMakeLists.txt',
     '.github/workflows/build.yml', 'scripts/build_native.py',

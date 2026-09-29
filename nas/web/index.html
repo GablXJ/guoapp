@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>短剧 NAS</title>
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+<header>
+  <div class="brand">短剧 NAS</div>
+  <select id="source" aria-label="站源"></select>
+  <form id="search">
+    <input id="query" type="search" placeholder="搜索剧名、演员或标签" autocomplete="off">
+    <button type="submit">搜索</button>
+  </form>
+  <div class="spacer"></div>
+  <span id="state" class="muted"></span>
+  <button id="logout" class="ghost">退出</button>
+</header>
+
+<nav id="tabs">
+  <button data-tab="browse" class="active">发现</button>
+  <button data-tab="downloads">下载<span id="badge-downloads" class="badge"></span></button>
+  <button data-tab="merges">合并<span id="badge-merges" class="badge"></span></button>
+  <button data-tab="library">成品</button>
+  <button data-tab="settings">设置</button>
+</nav>
+
+<main>
+  <section id="tab-browse">
+    <div id="categories" class="chips"></div>
+    <div id="notice" class="notice hidden"></div>
+    <div id="grid" class="grid"></div>
+    <div class="pager">
+      <button id="prev" class="ghost">上一页</button>
+      <span id="page" class="muted"></span>
+      <button id="next" class="ghost">下一页</button>
+    </div>
+  </section>
+
+  <section id="tab-downloads" class="hidden">
+    <div class="row-tools">
+      <button id="pause-all">全部暂停</button>
+      <button id="resume-all">全部继续</button>
+      <span class="spacer"></span>
+      <span id="download-summary" class="muted"></span>
+    </div>
+    <div id="download-groups"></div>
+  </section>
+
+  <section id="tab-merges" class="hidden">
+    <div class="row-tools">
+      <select id="merge-drama"></select>
+      <input id="merge-from" type="number" min="1" value="1">
+      <span class="muted">至</span>
+      <input id="merge-to" type="number" min="1" value="1">
+      <button id="merge-submit">提交合并</button>
+      <span class="spacer"></span>
+      <span id="merge-hint" class="muted">合并会占用一次 ffmpeg 处理，完成后可在“成品”下载</span>
+    </div>
+    <div id="merge-jobs"></div>
+  </section>
+
+  <section id="tab-library" class="hidden">
+    <div id="library-items"></div>
+  </section>
+
+  <section id="tab-settings" class="hidden">
+    <div class="panel">
+      <h3>网络代理</h3>
+      <p class="muted">只有在“发现”页打不开或一直报错时才需要调整；NAS 通常选择“直连”。</p>
+      <label>模式
+        <select id="proxy-mode">
+          <option value="direct">直连</option>
+          <option value="auto">自动（跟随系统或环境变量）</option>
+          <option value="manual">手动代理</option>
+        </select>
+      </label>
+      <label id="proxy-url-row" class="hidden">代理地址
+        <input id="proxy-url" type="text" placeholder="http://192.168.1.10:7890 或 socks5://192.168.1.10:7890">
+      </label>
+      <p id="proxy-status" class="muted"></p>
+      <h3>下载与抓取</h3>
+      <label>目录抓取并发 <input id="catalog-concurrency" type="number" min="1" max="6" step="1"></label>
+      <label>目录请求间隔（毫秒） <input id="catalog-interval" type="number" min="0" max="5000" step="50"></label>
+      <label>下载并发 <input id="download-concurrency" type="number" min="1" max="6" step="1"></label>
+      <label class="inline"><input id="download-by-source" type="checkbox"> 同一时刻只下载同一个站源</label>
+      <div class="row-tools">
+        <button id="settings-save" class="primary">保存设置</button>
+        <span class="spacer"></span>
+        <span id="settings-note" class="muted"></span>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div id="modal" class="modal hidden">
+  <div class="sheet">
+    <div class="sheet-head">
+      <div>
+        <h2 id="detail-title"></h2>
+        <p id="detail-meta" class="muted"></p>
+      </div>
+      <button id="detail-close" class="ghost">关闭</button>
+    </div>
+    <p id="detail-desc" class="desc"></p>
+    <div class="row-tools">
+      <label>画质
+        <select id="detail-quality">
+          <option value="0">自动（最高可用）</option>
+          <option value="1080">1080P</option>
+          <option value="720">720P</option>
+          <option value="480">480P</option>
+        </select>
+      </label>
+      <button data-range="all">全选</button>
+      <button data-range="none">全不选</button>
+      <input id="range-text" placeholder="范围，如 1-10,15" size="14">
+      <button id="range-apply">按范围选</button>
+      <span class="spacer"></span>
+      <span id="detail-count" class="muted">已选 0 集</span>
+      <button id="detail-download" class="primary">加入下载</button>
+    </div>
+    <div id="episodes" class="episodes"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<script src="/assets/app.js"></script>
+</body>
+</html>

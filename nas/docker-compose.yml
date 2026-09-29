@@ -1,0 +1,13 @@
+services:
+  guoapp-nas:
+    image: ghcr.io/CHANGE-ME/guoapp-nas:hongguojian
+    container_name: guoapp-nas
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    environment:
+      NAS_PASSWORD: ${NAS_PASSWORD:?请在同目录的 .env 里设置 NAS_PASSWORD 作为网页访问密码}
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - ./data:/data
+      - ./downloads:/downloads

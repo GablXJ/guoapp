@@ -1,0 +1,11 @@
+**
+!native
+!native/**
+!nas
+!nas/**
+native/build
+native/build/**
+nas/build
+nas/build/**
+nas/web/**/*~
+.gitignore
